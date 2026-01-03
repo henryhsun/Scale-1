@@ -35,8 +35,8 @@ const float calFactor = 748;
 // -------------------------
 
 void beep(int); // buzzer beep
-void quantize(float); // quantize values to nearest 0.1 g
-void hysteresis(float); // restrict screen updates if change is too small
+float quantize(float g); // quantize values to nearest 0.1 g
+float hysteresis(float read_g); // restrict screen updates if change is too small
 
 void setup() {
   Serial.begin(115200);
@@ -114,7 +114,10 @@ void loop() {
     grams = scale.get_units(1);
   }
 
-  gFilt = 0.5f*gFilt + 0.5f*grams;
+  // raw reading processing
+  gFilt = 0.5f * gFilt + 0.5f * grams; // EMA low pass filter
+  gFilt = hysteresis(gFilt); // Controls when UI can change to ignore noise
+  gFilt = quantize(gFilt); // quantize to fixed steps
 
   // Update OLED
   display.clearDisplay();
@@ -133,8 +136,7 @@ void loop() {
 
   display.setTextSize(2);
   display.setCursor(45, 16);
-  display.print(grams,1);
-  display.println(" g");
+  display.print(grams,2);
 
   display.setTextSize(2);
   display.setCursor(0, 40);
@@ -142,7 +144,7 @@ void loop() {
 
   display.display();
 
-  delay(70);
+  delay(30);
 }
 
 // ---------------
@@ -156,5 +158,16 @@ void beep(int ms = 15) {
   digitalWrite(BUZZER_PIN, LOW);
 }
 
-void quantize(float); // quantize values to nearest 0.1 g
-void hysteresis(float); // restrict screen updates if change is too small
+// quantize values to nearest 0.1 g
+float quantize(float g) {
+  return roundf(g * 10.0f) / 10.0f;
+}
+
+// restrict screen updates if change is too small
+float hysteresis(float read_g) {
+  static float shown_g = 0.00f;
+  if (fabsf(read_g - shown_g) >= 0.05) {
+    shown_g = read_g;
+  }
+  return shown_g;
+}
