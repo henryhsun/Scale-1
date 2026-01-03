@@ -31,12 +31,20 @@ constexpr int BUZZER_PIN = 25;
 const float calFactor = 748;
 
 // -------------------------
-//    Function Prototypes
+//    function prototypes
 // -------------------------
 
 void beep(int); // buzzer beep
 float quantize(float g); // quantize values to nearest 0.1 g
 float hysteresis(float read_g); // restrict screen updates if change is too small
+
+// tuning knobs
+float emaBig = 0.4;
+float emaMed = 0.7;
+float emaSma = 0.95;
+float threshold = 0.08;
+float sma = 3;
+float zClamp = 0.08;
 
 void setup() {
   Serial.begin(115200);
@@ -90,12 +98,18 @@ void setup() {
 }
 
 void loop() {
+  // define weigh variables
+  long val = 0;
+  float grams = 0.0f;
+  static float gFilt = 0;
+
   // Button is INPUT_PULLUP => pressed = LOW
   if (digitalRead(ZERO_BUTTON_PIN) == LOW) {
     // Basic debounce
     delay(25);
     if (digitalRead(ZERO_BUTTON_PIN) == LOW) {
       scale.tare();
+      gFilt = 0;
       beep(150);
 
       // Wait for release so it doesn't spam tare
@@ -105,18 +119,30 @@ void loop() {
     }
   }
 
-  long val = 0;
-  float grams = 0.0f;
-  static float gFilt = 0;
-
   if (scale.is_ready()) {
-    val = scale.get_value();
-    grams = scale.get_units(1);
+    val = scale.get_value(1);
+    grams = scale.get_units(sma);
   }
 
   // raw reading processing
-  gFilt = 0.5f * gFilt + 0.5f * grams; // EMA low pass filter
+
+  // adaptive EMA
+  float err = fabsf(grams - gFilt);
+
+  if(err > 1.0f) {
+    gFilt = grams; // snap immediately for large change
+  }
+  else {
+    float ema = 0;
+    if (err > 0.3f)         {ema = emaBig;}  // moving fast
+    else if (err > 0.1f)   {ema = emaMed;}  // moving medium
+    else                    {ema = emaSma;} // still/no change
+
+    gFilt = ema * gFilt + (1.0f - ema) * grams;
+  }
+
   gFilt = hysteresis(gFilt); // Controls when UI can change to ignore noise
+  gFilt = zeroClamp (gFilt);
   gFilt = quantize(gFilt); // quantize to fixed steps
 
   // Update OLED
@@ -166,8 +192,15 @@ float quantize(float g) {
 // restrict screen updates if change is too small
 float hysteresis(float read_g) {
   static float shown_g = 0.00f;
-  if (fabsf(read_g - shown_g) >= 0.05) {
+  if (fabsf(read_g - shown_g) >= threshold) {
     shown_g = read_g;
   }
   return shown_g;
+}
+
+// locks values close enough to 0.0 to display 0.0 for UX
+float zeroClamp(float g){
+  if (fabsf(g) < zClamp) return 0.0f;
+
+  return g;
 }
