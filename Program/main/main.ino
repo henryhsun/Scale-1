@@ -44,8 +44,9 @@ float emaMed = 0.7;
 float emaSma = 0.95;
 float threshold = 0.08;
 float sma = 3;
-float zClamp = 0.08;
-float timerStartG = 5.0f;
+float zClampPos = 0.2;
+float zClampNeg = 0.3;
+float timerStartG = 5.0;
 
 // timer
 bool timer = false;
@@ -154,7 +155,7 @@ void loop() {
   }
 
   gFilt = hysteresis(gFilt); // Controls when UI can change to ignore noise
-  gFilt = zeroClamp (gFilt);
+  gFilt = varZeroClamp (gFilt);
   gFilt = quantize(gFilt); // quantize to fixed steps
 
   // timer
@@ -221,8 +222,15 @@ float hysteresis(float read_g) {
 }
 
 // locks values close enough to 0.0 to display 0.0 for UX
-float zeroClamp(float g){
-  if (fabsf(g) < zClamp) return 0.0f;
+float varZeroClamp(float g){
+  if (g < 0 && fabsf(g) < zClampNeg) return 0.0f;
+  if (g > 0 && fabsf(g) < zClampPos) return 0.0f;
 
   return g;
+}
+
+float zeroDisplay(float g) {
+  if (g > -0.05 && g < 0.0f) {
+    g = 0.0f;
+  }
 }
