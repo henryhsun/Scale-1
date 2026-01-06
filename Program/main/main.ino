@@ -37,21 +37,23 @@ const float calFactor = 734;
 void beep(int); // buzzer beep
 float quantize(float g); // quantize values to nearest 0.1 g
 float hysteresis(float read_g); // restrict screen updates if change is too small
+float varZeroClamp(float g);
 
 // tuning knobs
-float emaBig = 0.4;
-float emaMed = 0.7;
-float emaSma = 0.95;
-float threshold = 0.08;
-float sma = 3;
-float zClampPos = 0.2;
-float zClampNeg = 0.3;
-float timerStartG = 5.0;
+const float emaBig = 0.4; // ema for large changes
+const float emaMed = 0.7; // ema for medium changes
+const float emaSma = 0.95; // ema for tiny changes/noise
+const float threshold = 0.08; // hysteresis threshold for movement
+const int sma = 3; // sma N value for scale.get_value
+const float zClampPos = 0.2; // positive z clamp value
+const float zClampNeg = 0.3; // negative z clamp value
+const float timerStartG = 2.0; // gram weight for timer to start
+unsigned long minFlowT = 800; // ms without flow for timer to stop
+const float minFlowG = 0.2; // gram minimum flow change for timer to stop
 
 // timer
-bool timer = false;
-unsigned long tStart = 0;
-unsigned long tElapsed = 0;
+unsigned long tStart = 0; // ms since boot
+unsigned long flowStopTimer = 0; // ms tracker to stop flow
 
 void setup() {
   Serial.begin(115200);
@@ -109,10 +111,12 @@ void loop() {
   long val = 0;
   float grams = 0.0f;
   static float gFilt = 0;
+  static float prevGFilt = 0; // timer auto-stop derivative
 
   // timer variables
   static bool running = false; // state of timer, running or not
   static float time = 0;
+  static bool startOnce = true; // timer can only start once, in beginning
 
   // Button is INPUT_PULLUP => pressed = LOW
   if (digitalRead(ZERO_BUTTON_PIN) == LOW) {
@@ -123,6 +127,8 @@ void loop() {
       gFilt = 0;
       running = false;
       time = 0;
+      flowStopTimer = 0;
+      startOnce = true;
       beep(150);
 
       // Wait for release so it doesn't spam tare
@@ -157,14 +163,33 @@ void loop() {
   gFilt = hysteresis(gFilt); // Controls when UI can change to ignore noise
   gFilt = varZeroClamp (gFilt);
   gFilt = quantize(gFilt); // quantize to fixed steps
+  
+  if (running == true) {
+    float deltaG = gFilt - prevGFilt; // change in weight
+
+    if (deltaG < minFlowG) { // flow stopped, weight barely changing
+      if (flowStopTimer == 0) {
+        flowStopTimer = millis(); // start counting flow stopped time
+      } else if (millis() - flowStopTimer > minFlowT){ // if flow stop timer is running alr
+        running = false;
+        startOnce = false;
+        flowStopTimer = 0;
+      }
+    } else {
+        flowStopTimer = 0;
+    }
+  }
+  
+  prevGFilt = gFilt;
 
   // timer
   if (gFilt > timerStartG && running == false) {
     running = true;
     tStart = millis();
+    flowStopTimer = 0;
   }
 
-  if (running == true) {
+  if (running == true && startOnce == true) {
     time = (millis() - tStart)/1000.0f;
   }
 
@@ -227,10 +252,4 @@ float varZeroClamp(float g){
   if (g > 0 && fabsf(g) < zClampPos) return 0.0f;
 
   return g;
-}
-
-float zeroDisplay(float g) {
-  if (g > -0.05 && g < 0.0f) {
-    g = 0.0f;
-  }
 }
