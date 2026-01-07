@@ -55,6 +55,10 @@ const float minFlowG = 0.2; // gram minimum flow change for timer to stop
 unsigned long tStart = 0; // ms since boot
 unsigned long flowStopTimer = 0; // ms tracker to stop flow
 
+// millis based timing
+const unsigned long refresh = 30; // ms between executing loop
+const unsigned long debounce = 25; // ms for debounce
+
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -118,107 +122,112 @@ void loop() {
   static float time = 0;
   static bool startOnce = true; // timer can only start once, in beginning
 
-  // Button is INPUT_PULLUP => pressed = LOW
-  if (digitalRead(ZERO_BUTTON_PIN) == LOW) {
-    // Basic debounce
-    delay(25);
+  // millis based refresh
+  static unsigned long lastTime = 0;
+  unsigned long nowTime = millis();
+
+  // millis based debounce
+  static unsigned long lastZero = 0;
+  
+  if (nowTime - lastTime >= refresh) {
+      lastTime = nowTime;
+    
+    // millis based zero block: input pullup, pressed = low
     if (digitalRead(ZERO_BUTTON_PIN) == LOW) {
-      scale.tare();
-      gFilt = 0;
-      running = false;
-      time = 0;
-      flowStopTimer = 0;
-      startOnce = true;
-      beep(150);
+      if(nowTime - lastZero > debounce) {
+        lastZero = nowTime;
 
-      // Wait for release so it doesn't spam tare
-      while (digitalRead(ZERO_BUTTON_PIN) == LOW) {
-        delay(10);
-      }
-    }
-  }
-
-  if (scale.is_ready()) {
-    val = scale.get_value(1);
-    grams = scale.get_units(sma);
-  }
-
-  // raw reading processing
-
-  // adaptive EMA
-  float err = fabsf(grams - gFilt);
-
-  if(err > 1.0f) {
-    gFilt = grams; // snap immediately for large change
-  }
-  else {
-    float ema = 0;
-    if (err > 0.3f)         {ema = emaBig;}  // moving fast
-    else if (err > 0.1f)   {ema = emaMed;}  // moving medium
-    else                    {ema = emaSma;} // still/no change
-
-    gFilt = ema * gFilt + (1.0f - ema) * grams;
-  }
-
-  gFilt = hysteresis(gFilt); // Controls when UI can change to ignore noise
-  gFilt = varZeroClamp (gFilt);
-  gFilt = quantize(gFilt); // quantize to fixed steps
-  
-  if (running == true) {
-    float deltaG = gFilt - prevGFilt; // change in weight
-
-    if (deltaG < minFlowG) { // flow stopped, weight barely changing
-      if (flowStopTimer == 0) {
-        flowStopTimer = millis(); // start counting flow stopped time
-      } else if (millis() - flowStopTimer > minFlowT){ // if flow stop timer is running alr
+        // reset everything
+        scale.tare();
+        gFilt = 0;
         running = false;
-        startOnce = false;
+        time = 0;
         flowStopTimer = 0;
+        startOnce = true;
+        beep(100);
       }
-    } else {
-        flowStopTimer = 0;
     }
+
+    if (scale.is_ready()) {
+      val = scale.get_value(1);
+      grams = scale.get_units(sma);
+    }
+
+    // raw reading processing
+
+    // adaptive EMA
+    float err = fabsf(grams - gFilt);
+
+    if(err > 1.0f) {
+      gFilt = grams; // snap immediately for large change
+    }
+    else {
+      float ema = 0;
+      if (err > 0.3f)         {ema = emaBig;}  // moving fast
+      else if (err > 0.1f)   {ema = emaMed;}  // moving medium
+      else                    {ema = emaSma;} // still/no change
+
+      gFilt = ema * gFilt + (1.0f - ema) * grams;
+    }
+
+    gFilt = hysteresis(gFilt); // Controls when UI can change to ignore noise
+    gFilt = varZeroClamp (gFilt);
+    gFilt = quantize(gFilt); // quantize to fixed steps
+    
+    if (running == true) {
+      float deltaG = gFilt - prevGFilt; // change in weight
+
+      if (deltaG < minFlowG) { // flow stopped, weight barely changing
+        if (flowStopTimer == 0) {
+          flowStopTimer = millis(); // start counting flow stopped time
+        } else if (millis() - flowStopTimer > minFlowT){ // if flow stop timer is running
+          running = false;
+          startOnce = false;
+          flowStopTimer = 0;
+        }
+      } else {
+          flowStopTimer = 0;
+      }
+    }
+    
+    prevGFilt = gFilt;
+
+    // timer
+    if (gFilt > timerStartG && running == false) {
+      running = true;
+      tStart = millis();
+      flowStopTimer = 0;
+    }
+
+    if (running == true && startOnce == true) {
+      time = (millis() - tStart)/1000.0f;
+    }
+
+    // Update OLED
+    display.clearDisplay();
+
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Raw:");
+
+    display.setTextSize(1);
+    display.setCursor(0, 16);
+    display.print(val);
+
+    display.setTextSize(2);
+    display.setCursor(55, 16);
+    display.print(grams,2);
+
+    display.setTextSize(2);
+    display.setCursor(0, 40);
+    display.print(gFilt,1);
+
+    display.setTextSize(2);
+    display.setCursor(55,40);
+    display.print(time,1);
+
+    display.display();
   }
-  
-  prevGFilt = gFilt;
-
-  // timer
-  if (gFilt > timerStartG && running == false) {
-    running = true;
-    tStart = millis();
-    flowStopTimer = 0;
-  }
-
-  if (running == true && startOnce == true) {
-    time = (millis() - tStart)/1000.0f;
-  }
-
-  // Update OLED
-  display.clearDisplay();
-
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("Raw:");
-
-  display.setTextSize(1);
-  display.setCursor(0, 16);
-  display.print(val);
-
-  display.setTextSize(2);
-  display.setCursor(55, 16);
-  display.print(grams,2);
-
-  display.setTextSize(2);
-  display.setCursor(0, 40);
-  display.print(gFilt,1);
-
-  display.setTextSize(2);
-  display.setCursor(55,40);
-  display.print(time,1);
-
-  display.display();
-
-  delay(30);
 }
 
 // ---------------
