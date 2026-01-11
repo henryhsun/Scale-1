@@ -156,6 +156,21 @@ void loop() {
   }
 
   lastModeButton = modeButton;
+  
+  // zero on mode change
+  static Mode prevMode = MODE_COUNT;
+  if (mode != prevMode) {
+    // mode just changed
+    scale.tare();
+
+    gFilt = 0.0f;
+    running = false;
+    time = 0.0f;
+    startOnce = true;
+    flowStopTimer = 0;
+
+    prevMode = mode;
+  }
 
   //--------------- FSM end-------------
 
