@@ -65,8 +65,7 @@ enum Mode {
   MODE_KITCHEN, // 0: weight only
   MODE_SHOT,    // 1: weight + auto start-stop timer
   MODE_POUR,    // 2: weight + cts timer
-  // MODE_MANUAL,  // 3: weight + manual press timer
-  // MODE_SLEEP,   // 4: low power "off"
+  MODE_SLEEP,   // 4: low power UX "off"
   MODE_COUNT    // 5: counts total number of modes for cycling
 };
 
@@ -140,7 +139,34 @@ void loop() {
   static unsigned long lastTime = 0;
   unsigned long nowTime = millis();
 
-  // -------------- FSM ---------------
+  // sleep mode tare button detection
+  static bool zeroWasPressed = false;
+  static unsigned long zeroPressTime = 0;
+  static bool asleep = false;
+
+  bool zeroPressed = (digitalRead(zeroButtonPin) == LOW);
+
+  // detect when zero was first pressed
+  if (zeroPressed == true && !zeroWasPressed == true) {
+    zeroWasPressed = true;
+    zeroPressTime = nowTime;
+    asleep = false;
+  }
+
+  // detect how long zero was pressed
+  if (zeroPressed && zeroWasPressed && !asleep) {
+    if(nowTime - zeroPressTime >= 2000) {
+      asleep = true;
+      mode = MODE_SLEEP;
+      beep (80);
+    }
+  }
+
+  if (!zeroPressed && zeroWasPressed) {
+    zeroWasPressed = false;
+  }
+
+  // -------------- FSM mode swticher --------------
   static bool lastModeButton = HIGH;
 
   bool modeButton = digitalRead(modeButtonPin);
@@ -152,6 +178,10 @@ void loop() {
     // cycle modes
       mode = (Mode)((mode+1) % MODE_COUNT);
       beep(100);
+
+      if (mode == MODE_SLEEP) {
+        mode = (Mode)((mode + 1) % MODE_COUNT);  // skip sleep
+      }
     }
   }
 
@@ -270,6 +300,11 @@ void loop() {
         if (running == true) {
         time = (nowTime - tStart)/1000.0f;
         }
+
+      case MODE_SLEEP:
+        display.clearDisplay();
+        display.display();
+        return; //ignore display values, keep screen off
     }
 
     prevGFilt = gFilt;
