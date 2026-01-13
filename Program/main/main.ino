@@ -144,10 +144,20 @@ void loop() {
   static unsigned long zeroPressTime = 0;
   static bool asleep = false;
 
-  bool zeroPressed = (digitalRead(zeroButtonPin) == LOW);
+  bool zeroPressed = (digitalRead (zeroButtonPin) == LOW); // pressed = HIGH = true
+  bool modePressed = (digitalRead (modeButtonPin) == LOW);
+
+  if (mode == MODE_SLEEP) {
+    if (zeroPressed || modePressed) {
+      mode = MODE_KITCHEN;
+      display.ssd1306_command(SSD1306_DISPLAYON);
+      beep(60);
+    }
+    return;
+  }
 
   // detect when zero was first pressed
-  if (zeroPressed == true && !zeroWasPressed == true) {
+  if (zeroPressed && !zeroWasPressed) {
     zeroWasPressed = true;
     zeroPressTime = nowTime;
     asleep = false;
@@ -158,6 +168,7 @@ void loop() {
     if(nowTime - zeroPressTime >= 2000) {
       asleep = true;
       mode = MODE_SLEEP;
+      display.ssd1306_command(SSD1306_DISPLAYOFF);
       beep (80);
     }
   }
@@ -167,25 +178,23 @@ void loop() {
   }
 
   // -------------- FSM mode swticher --------------
-  static bool lastModeButton = HIGH;
+  static bool lastModeButton = false;
 
-  bool modeButton = digitalRead(modeButtonPin);
   static unsigned long lastModePress = 0;
-  if (lastModeButton == HIGH && modeButton == LOW) {
+  if (lastModeButton == false && modePressed == true) {
     if (nowTime - lastModePress > debounce) { // debounce
       lastModePress = nowTime;
 
     // cycle modes
       mode = (Mode)((mode+1) % MODE_COUNT);
-      beep(100);
+      
+      if (mode == MODE_SLEEP) mode = (Mode)((mode + 1) % MODE_COUNT);  // skip sleep
 
-      if (mode == MODE_SLEEP) {
-        mode = (Mode)((mode + 1) % MODE_COUNT);  // skip sleep
-      }
+      beep(100);
     }
   }
 
-  lastModeButton = modeButton;
+  lastModeButton = modePressed;
   
   // zero on mode change
   static Mode prevMode = MODE_COUNT;
@@ -300,6 +309,7 @@ void loop() {
         if (running == true) {
         time = (nowTime - tStart)/1000.0f;
         }
+        break;
 
       case MODE_SLEEP:
         display.clearDisplay();
