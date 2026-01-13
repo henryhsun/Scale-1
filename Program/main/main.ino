@@ -144,10 +144,18 @@ void loop() {
   static unsigned long zeroPressTime = 0;
   static bool asleep = false;
 
-  bool zeroPressed = (digitalRead (zeroButtonPin) == LOW); // pressed = HIGH = true
+  bool zeroPressed = (digitalRead (zeroButtonPin) == LOW); // pressed = HIGH = true, default = not pressed
   bool modePressed = (digitalRead (modeButtonPin) == LOW);
+  static bool sleepArm = false;
 
   if (mode == MODE_SLEEP) {
+    if (!sleepArm) {
+      if (!zeroPressed && !modePressed) {
+        sleepArm = true;
+      }
+      return;
+    }
+
     if (zeroPressed || modePressed) {
       mode = MODE_KITCHEN;
       display.ssd1306_command(SSD1306_DISPLAYON);
@@ -170,6 +178,7 @@ void loop() {
       mode = MODE_SLEEP;
       display.ssd1306_command(SSD1306_DISPLAYOFF);
       beep (80);
+      sleepArm = false;
     }
   }
 
