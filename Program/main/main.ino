@@ -30,28 +30,21 @@ constexpr int buzzerPin = 25;
 // calibration constant via manual tuning w/known weight
 const float calFactor = 734;
 
-// -------------------------
-//    function prototypes
-// -------------------------
-
-void beep(int);                                                                                                             // buzzer beep
-float quantize(float g);                                                                                                    // quantize values to nearest 0.1 g
-float hysteresis(float read_g);                                                                                             // restrict screen updates if change is too small
-float varZeroClamp(float g);                                                                                                // clamp values close to 0
-void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce);  // tare scale
-
 // tuning knobs
-const float emaBig = 0.4;       // ema for large changes
-const float emaMed = 0.7;       // ema for medium changes
-const float emaSma = 0.95;      // ema for tiny changes/noise
-const float threshold = 0.08;   // hysteresis threshold for movement
-const int sma = 3;              // sma N value for scale.get_value
-const float zClampPos = 0.2;    // positive z clamp value
-const float zClampNeg = 0.3;    // negative z clamp value
-const float timerStartG = 2.0;  // gram weight for timer to start
-unsigned long minFlowT = 800;   // ms without flow for timer to stop
-const float minFlowG = 0.2;     // gram minimum flow change for timer to stop
-const float sleepHold = 1000;   // ms to hold tare button for sleep mode
+const float emaBig = 0.4;   // ema for large changes
+const float emaMed = 0.7;   // ema for medium changes
+const float emaSma = 0.95;  // ema for tiny changes/noise
+
+const float threshold = 0.08;  // hysteresis threshold for movement
+const int sma = 3;             // sma N value for scale.get_value
+
+const float zClampPos = 0.2;  // positive z clamp value
+const float zClampNeg = 0.3;  // negative z clamp value
+
+const float timerStartG = 2.0;       // gram weight for timer to start
+const unsigned long minFlowT = 800;  // ms without flow for timer to stop
+const float minFlowG = 0.2;          // gram minimum flow change for timer to stop
+const float sleepHold = 1000;        // ms to hold tare button for sleep mode
 
 // timer
 unsigned long tStart = 0;         // ms since boot
@@ -60,6 +53,13 @@ unsigned long flowStopTimer = 0;  // ms tracker to stop flow
 // millis based timing
 const unsigned long refresh = 30;   // ms between executing loop
 const unsigned long debounce = 25;  // ms for debounce
+
+// function prototypes
+void beep(int);                                                                                                             // buzzer beep
+float quantize(float g);                                                                                                    // quantize values to nearest 0.1 g
+float hysteresis(float read_g);                                                                                             // restrict screen updates if change is too small
+float varZeroClamp(float g);                                                                                                // clamp values close to 0
+void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce);  // tare scale
 
 // FSM modes
 enum Mode {
@@ -74,7 +74,7 @@ static Mode mode = MODE_POUR;  // default starting mode
 
 // FSM mode update/draw function prototypes
 
-void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce, unsigned long &flowStopTimer);
+void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce);
 void updateShot(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce, unsigned long &flowStopTimer, float &prevGFilt);
 void updateKitchen(bool &running, float &time, bool &startOnce, unsigned long &flowStopTimer);
 
@@ -269,7 +269,7 @@ void loop() {
     // fsm non-blocking mode switching
     switch (mode) {
       case MODE_POUR:
-        updatePour(gFilt, running, nowTime, time, startOnce, flowStopTimer);
+        updatePour(gFilt, running, nowTime, time, startOnce);
         drawPour(gFilt, time);
         break;
 
@@ -285,55 +285,21 @@ void loop() {
         break;
 
       case MODE_SLEEP:
-        display.clearDisplay();
-        display.display();
         return;  //ignore display values, keep screen off
     }
 
     prevGFilt = gFilt;
 
-    // // display mode
-    // display.setTextSize(1);
-    // display.setCursor(0, 0);
-    // display.print("Mode:");
-    // if (mode == MODE_KITCHEN) display.print("kitchen");
-    // else if (mode == MODE_SHOT) display.print("espresso shot");
-    // else if (mode == MODE_POUR) display.print("pourover");
-
-    // // raw value
-    // display.setTextSize(2);
-    // display.setCursor(0, 16);
-    // if (mode == MODE_KITCHEN) display.print(pounds, 2);
-    // else display.print(val);
-
-    // // raw grams
-    // display.setTextSize(2);
-    // display.setCursor(55, 16);
-    // display.print(grams, 2);
-
-    // // filtered grams
-    // display.setTextSize(2);
-    // display.setCursor(0, 40);
-    // display.print(gFilt, 1);
-
-    // // time
-    // display.setTextSize(2);
-    // display.setCursor(55, 40);
-    // if (mode == MODE_SHOT) display.print(time, 1);
-    // if (mode == MODE_KITCHEN) display.print(oz, 1);
-    // if (mode == MODE_POUR) display.print(time, 1);
     display.display();
   }
 }
 
 // -------------- FSM mode functions ------------------
-void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce, unsigned long &flowStopTimer) {
+void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce) {
   if (running == false && startOnce == true && gFilt > timerStartG) {
     running = true;
     tStart = nowTime;
     time = 0.0f;
-    startOnce = false;
-    flowStopTimer = 0;
   }
 
   if (running == true) {
@@ -387,39 +353,39 @@ void updateKitchen(bool &running, float &time, bool &startOnce, unsigned long &f
 }
 
 void drawPour(float gFilt, float time) {
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("mode: pourover");
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("mode: pourover");
 
-    // filtered grams
-    display.setTextSize(2);
-    display.setCursor(0, 16);
-    display.print(gFilt, 1);
-    display.println(" g");
+  // filtered grams
+  display.setTextSize(2);
+  display.setCursor(0, 16);
+  display.print(gFilt, 1);
+  display.println(" g");
 
-    // time
-    display.setTextSize(2);
-    display.setCursor(0, 40);
-    display.print(time, 1);
-    display.println(" s");
+  // time
+  display.setTextSize(2);
+  display.setCursor(0, 40);
+  display.print(time, 1);
+  display.println(" s");
 }
 
 void drawShot(float gFilt, float time) {
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("mode: shot");
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("mode: shot");
 
-    // filtered grams
-    display.setTextSize(2);
-    display.setCursor(0, 16);
-    display.print(gFilt, 1);
-    display.println(" g");
+  // filtered grams
+  display.setTextSize(2);
+  display.setCursor(0, 16);
+  display.print(gFilt, 1);
+  display.println(" g");
 
-    // time
-    display.setTextSize(2);
-    display.setCursor(0, 40);
-    display.print(time, 1);
-    display.println(" s");
+  // time
+  display.setTextSize(2);
+  display.setCursor(0, 40);
+  display.print(time, 1);
+  display.println(" s");
 }
 
 void drawKitchen(float grams, float gFilt) {
