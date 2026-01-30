@@ -54,9 +54,9 @@ unsigned long tStart = 0;         // ms since boot
 unsigned long flowStopTimer = 0;  // ms tracker to stop flow
 
 // millis based timing
-const unsigned long refreshAwake = 30; // ms between executing loop
-const unsigned long refreshSleep = 300; // longer ms between executing loop while asleep to save power
-const unsigned long debounce = 25;  // ms for debounce
+const unsigned long refreshAwake = 30;   // ms between executing loop
+const unsigned long refreshSleep = 300;  // longer ms between executing loop while asleep to save power
+const unsigned long debounce = 25;       // ms for debounce
 
 // function prototypes
 void beep(int);                                                                                                             // buzzer beep
@@ -64,8 +64,9 @@ float quantize(float g);                                                        
 float hysteresis(float read_g);                                                                                             // restrict screen updates if change is too small
 float varZeroClamp(float g);                                                                                                // clamp values close to 0
 void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce);  // tare scale
-void hx711PowerDown(); // power down to save battery
+void hx711PowerDown();                                                                                                      // power down to save battery
 void hx711PowerUp();
+void convertTime(unsigned long time);  // timer display for minutes, seconds
 
 // FSM modes
 enum Mode {
@@ -152,6 +153,8 @@ void loop() {
   static bool running = false;  // state of timer, running or not
   static float time = 0;
   static bool startOnce = true;  // timer can only start once, in beginning
+  static unsigned float seconds = 0;
+  static unsigned int minutes = 0;
 
   // millis based refresh
   static unsigned long lastTime = 0;
@@ -166,15 +169,17 @@ void loop() {
   bool zeroPressed = (digitalRead(zeroButtonPin) == LOW);  // pressed = HIGH = true, default = not pressed
   bool modePressed = (digitalRead(modeButtonPin) == LOW);
   static bool sleepArm = false;
-      Serial.println(refresh);
-  if (mode == MODE_SLEEP) {
+
+  Serial.println(refresh); // debugging
+
+    if (mode == MODE_SLEEP) {
     if (!sleepArm) {
       if (!zeroPressed && !modePressed) {
         sleepArm = true;
         display.ssd1306_command(SSD1306_DISPLAYOFF);
         refresh = refreshSleep;
         btStop();
-        hx711PowerDown(); 
+        hx711PowerDown();
       }
       return;
     }
@@ -299,8 +304,8 @@ void loop() {
         drawKitchen(grams, gFilt);
         break;
 
-      case MODE_SLEEP: // save power
-        return;  //ignore display values, keep screen off
+      case MODE_SLEEP:  // save power
+        return;         //ignore display values, keep screen off
     }
 
     prevGFilt = gFilt;
@@ -318,7 +323,7 @@ void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, 
   }
 
   if (running == true) {
-    time = (nowTime - tStart) / 1000.0f;
+    time = nowTime - tStart;
   }
 }
 
@@ -496,4 +501,10 @@ void hx711PowerUp() {
   delayMicroseconds(80);
 
   delay(50);
+}
+
+void convertTime(unsigned long time, unsigned int &minutes, unsigned int &seconds, unsigned int &milliseconds) {
+  milliseconds = (time % 1000) / 100;
+  seconds = time / 1000 % 60;
+  minutes = time / 60000;
 }
