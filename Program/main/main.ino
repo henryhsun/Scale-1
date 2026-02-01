@@ -49,6 +49,9 @@ const unsigned long minFlowT = 800;  // ms without flow for timer to stop
 const float minFlowG = 0.2;          // gram minimum flow change for timer to stop
 const float sleepHold = 1000;        // ms to hold tare button for sleep mode
 
+const float flowEmaAlpha = 0.85f;  // closer to 1 = smoother, more lag
+const float flowDeadband = 0.3f;   // g/s below this shows as 0
+
 // timer
 unsigned long tStart = 0;         // ms since boot
 unsigned long flowStopTimer = 0;  // ms tracker to stop flow
@@ -169,8 +172,9 @@ void loop() {
   static unsigned long refresh = refreshAwake;
 
   // flowrate
-  static float flowrate = 0;
-  static float prevGFlow = 0; // seperate prev grams for flowrate calc
+  static float flowrateRaw = 0;
+  static float prevGFlow = 0;     // seperate prev grams for flowrate calc
+  static float flowrateFilt = 0;  // ema filtered flowrate
 
   // sleep mode tare button detection
   static bool zeroWasPressed = false;
@@ -181,9 +185,9 @@ void loop() {
   bool modePressed = (digitalRead(modeButtonPin) == LOW);
   static bool sleepArm = false;
 
-  Serial.println(refresh); // debugging
+  Serial.println(refresh);  // debugging
 
-    if (mode == MODE_SLEEP) {
+  if (mode == MODE_SLEEP) {
     if (!sleepArm) {
       if (!zeroPressed && !modePressed) {
         sleepArm = true;
@@ -297,7 +301,13 @@ void loop() {
     gFilt = varZeroClamp(gFilt);  // clamps to zero when close, UX stability
     gFilt = quantize(gFilt);      // quantize to fixed steps for 0.1 g accuracy
 
-    flowrate = computeFlowrate(gFilt, prevGFlow, nowTime);
+    flowrateRaw = computeFlowrate(gFilt, prevGFlow, nowTime);
+
+    // deadband
+    if (flowrateRaw < flowDeadband) flowrateRaw = 0.0f;
+
+    // EMA smooth
+    flowrateFilt = flowEmaAlpha * flowrateFilt + (1.0f - flowEmaAlpha) * flowrateRaw;
 
     // fsm non-blocking mode switching
     switch (mode) {
@@ -305,7 +315,7 @@ void loop() {
         updatePour(gFilt, running, nowTime, time, startOnce);
         convertTime(time, minutes, seconds, milliseconds);
         drawPour(gFilt, minutes, seconds, milliseconds);
-        drawFlowBar(flowrate, pourFlow);
+        drawFlowBar(flowrateFilt, pourFlow);
         break;
 
       case MODE_SHOT:
@@ -313,7 +323,7 @@ void loop() {
         updateShot(gFilt, running, nowTime, time, startOnce, flowStopTimer, prevGFilt);
         convertTime(time, minutes, seconds, milliseconds);
         drawShot(gFilt, minutes, seconds, milliseconds);
-        drawFlowBar(flowrate, shotFlow);
+        drawFlowBar(flowrateFilt, shotFlow);
         break;
 
       case MODE_KITCHEN:
@@ -324,8 +334,6 @@ void loop() {
       case MODE_SLEEP:  // save power
         return;         //ignore display values, keep screen off
     }
-    prevGFlow = gFilt;
-
     display.display();
   }
 }
@@ -413,9 +421,9 @@ void drawPour(float gFilt, int minutes, int seconds, int milliseconds) {
   display.print(milliseconds);
 
   display.setTextSize(1);
-  display.setCursor(5,57);
+  display.setCursor(5, 57);
   display.print("m");
-  display.setCursor(41,57);
+  display.setCursor(41, 57);
   display.print("s");
 }
 
@@ -443,9 +451,9 @@ void drawShot(float gFilt, int minutes, int seconds, int milliseconds) {
   display.print(milliseconds);
 
   display.setTextSize(1);
-  display.setCursor(5,57);
+  display.setCursor(5, 57);
   display.print("m");
-  display.setCursor(41,57);
+  display.setCursor(41, 57);
   display.print("s");
 }
 
@@ -474,9 +482,9 @@ void drawKitchen(float grams, float gFilt) {
   display.print(oz, 1);
 
   display.setTextSize(1);
-  display.setCursor(0,57);
+  display.setCursor(0, 57);
   display.print("lbs");
-  display.setCursor(65,57);
+  display.setCursor(65, 57);
   display.print("oz");
 }
 
