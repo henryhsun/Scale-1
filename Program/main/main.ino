@@ -58,6 +58,10 @@ const unsigned long refreshAwake = 30;   // ms between executing loop
 const unsigned long refreshSleep = 300;  // longer ms between executing loop while asleep to save power
 const unsigned long debounce = 25;       // ms for debounce
 
+// flowrate scaling
+const float shotFlow = 25;
+const float pourFlow = 50;
+
 // function prototypes
 void beep(int);                                                                                                             // buzzer beep
 float quantize(float g);                                                                                                    // quantize values to nearest 0.1 g
@@ -67,6 +71,7 @@ void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flo
 void hx711PowerDown();                                                                                                      // power down to save battery
 void hx711PowerUp();
 void convertTime(unsigned long time);  // timer display for minutes, seconds
+float computeFlowrate(float gFilt, float &prevGFilt, unsigned long nowTime);
 
 // FSM modes
 enum Mode {
@@ -162,6 +167,9 @@ void loop() {
   static unsigned long lastTime = 0;
   unsigned long nowTime = millis();
   static unsigned long refresh = refreshAwake;
+
+  // flowrate
+  static float flowrate = 0;
 
   // sleep mode tare button detection
   static bool zeroWasPressed = false;
@@ -288,12 +296,15 @@ void loop() {
     gFilt = varZeroClamp(gFilt);  // clamps to zero when close, UX stability
     gFilt = quantize(gFilt);      // quantize to fixed steps for 0.1 g accuracy
 
+    flowrate = computeFlowrate(gFilt, prevGFilt, nowTime);
+
     // fsm non-blocking mode switching
     switch (mode) {
       case MODE_POUR:
         updatePour(gFilt, running, nowTime, time, startOnce);
         convertTime(time, minutes, seconds, milliseconds);
         drawPour(gFilt, minutes, seconds, milliseconds);
+        drawFlowBar(flowrate, pourFlow);
         break;
 
       case MODE_SHOT:
@@ -301,6 +312,7 @@ void loop() {
         updateShot(gFilt, running, nowTime, time, startOnce, flowStopTimer, prevGFilt);
         convertTime(time, minutes, seconds, milliseconds);
         drawShot(gFilt, minutes, seconds, milliseconds);
+        drawFlowBar(flowrate, shotFlow);
         break;
 
       case MODE_KITCHEN:
@@ -541,4 +553,50 @@ void convertTime(unsigned long time, unsigned int &minutes, unsigned int &second
   milliseconds = (time % 1000) / 100;
   seconds = time / 1000 % 60;
   minutes = time / 60000;
+}
+
+float computeFlowrate(float gFilt, float &prevGFilt, unsigned long nowTime) {
+  static unsigned long prevTime = 0;
+  static bool inited = false;
+
+  // init on first call
+  if (!inited) {
+    prevGFilt = gFilt;
+    prevTime = nowTime;
+    inited = true;
+    return 0.0f;
+  }
+
+  unsigned long dtMs = nowTime - prevTime;
+  if (dtMs == 0) return 0.0f;
+
+  float dg = gFilt - prevGFilt;
+
+  // grams per second
+  float flow = dg / (dtMs / 1000.0f);
+
+  // UX: ignore negative flow
+  if (flow < 0.0f) flow = 0.0f;
+
+  // update history
+  prevGFilt = gFilt;
+  prevTime = nowTime;
+
+  return flow;
+}
+
+void drawFlowBar(float flowrate, float flowMax) {
+  if (flowrate < 0) flowrate = 0;
+  if (flowrate > flowMax) flowrate = flowMax;
+
+  const int barW = 6;
+  const int barX = 128 - barW;
+  const int barHmax = 60;
+  const int barBottomY = 63;
+
+  int h = (int)((flowrate / flowMax) * barHmax);
+  h = constrain(h, 0, barHmax);
+
+  display.drawRect(barX, barBottomY - barHmax, barW, barHmax, SSD1306_WHITE);
+  display.fillRect(barX, barBottomY - h, barW, h, SSD1306_WHITE);
 }
