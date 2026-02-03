@@ -65,13 +65,17 @@ const unsigned long debounce = 25;       // ms for debounce
 const float shotFlow = 25;
 const float pourFlow = 50;
 
+// auto-sleep when no button is pressed for time
+const unsigned long sleepMs = 10UL * 60UL * 1000UL;  // 10 minutes; 10min*60s/min*1000ms/s
+static unsigned long lastPressMs = 0;
+
 // function prototypes
-void beep(int);                                                                                                             // buzzer beep
-float quantize(float g);                                                                                                    // quantize values to nearest 0.1 g
-float hysteresis(float read_g);                                                                                             // restrict screen updates if change is too small
-float varZeroClamp(float g);                                                                                                // clamp values close to 0
-void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce);  // tare scale
-void hx711PowerDown();                                                                                                      // power down to save battery
+void beep(int);                                                                                                                                        // buzzer beep
+float quantize(float g);                                                                                                                               // quantize values to nearest 0.1 g
+float hysteresis(float read_g);                                                                                                                        // restrict screen updates if change is too small
+float varZeroClamp(float g);                                                                                                                           // clamp values close to 0
+void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long lastPressMs);  // tare scale
+void hx711PowerDown();                                                                                                                                 // power down to save battery
 void hx711PowerUp();
 void convertTime(unsigned long time);  // timer display for minutes, seconds
 float computeFlowrate(float gFilt, float &prevGFlow, unsigned long nowTime);
@@ -148,6 +152,8 @@ void setup() {
   display.println("Ready.");
   display.display();
   delay(300);
+
+  lastPressMs = millis();
 }
 
 void loop() {
@@ -186,6 +192,57 @@ void loop() {
   static bool sleepArm = false;
 
   Serial.println(refresh);  // debugging
+
+  // -------------- FSM mode swticher --------------
+  static bool lastModeButton = false;
+
+  static unsigned long lastModePress = 0;
+  if (lastModeButton == false && modePressed == true) {
+    if (nowTime - lastModePress > debounce) {  // debounce
+      lastModePress = nowTime;
+
+      // cycle modes
+      mode = (Mode)((mode + 1) % MODE_COUNT);
+
+      if (mode == MODE_SLEEP) mode = MODE_POUR;  // skip sleep
+
+      beep(100);
+    }
+  }
+
+  lastModeButton = modePressed;
+
+  // zero on mode change
+  static Mode prevMode = MODE_COUNT;
+  if (mode != prevMode) {
+    // mode just changed
+    scale.tare();
+
+    gFilt = 0.0f;
+    running = false;
+    time = 0.0f;
+    startOnce = true;
+    flowStopTimer = 0;
+
+    lastPressMs = nowTime;
+
+    prevMode = mode;
+  }
+  
+  // sleep logic
+  if (mode != prevMode) {
+    if (mode == MODE_SLEEP) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(0, 18);
+      display.print("sleeping");
+      display.display();
+
+      beep(50);
+      delay(250);
+      display.ssd1306_command(SSD1306_DISPLAYOFF);
+    }
+  }
 
   if (mode == MODE_SLEEP) {
     if (!sleepArm) {
@@ -230,39 +287,13 @@ void loop() {
     zeroWasPressed = false;
   }
 
-  // -------------- FSM mode swticher --------------
-  static bool lastModeButton = false;
-
-  static unsigned long lastModePress = 0;
-  if (lastModeButton == false && modePressed == true) {
-    if (nowTime - lastModePress > debounce) {  // debounce
-      lastModePress = nowTime;
-
-      // cycle modes
-      mode = (Mode)((mode + 1) % MODE_COUNT);
-
-      if (mode == MODE_SLEEP) mode = MODE_POUR;  // skip sleep
-
-      beep(100);
+  if (mode != MODE_SLEEP) {
+    if (nowTime - lastPressMs >= sleepMs) {
+      mode = MODE_SLEEP;
+      sleepArm = false;  // your existing guard
     }
   }
 
-  lastModeButton = modePressed;
-
-  // zero on mode change
-  static Mode prevMode = MODE_COUNT;
-  if (mode != prevMode) {
-    // mode just changed
-    scale.tare();
-
-    gFilt = 0.0f;
-    running = false;
-    time = 0.0f;
-    startOnce = true;
-    flowStopTimer = 0;
-
-    prevMode = mode;
-  }
 
   // millis based refresh rate based on refresh variable
   if (nowTime - lastTime >= refresh) {
@@ -272,7 +303,7 @@ void loop() {
     display.clearDisplay();
 
     // millis based zero function
-    tare(nowTime, gFilt, running, flowStopTimer, time, startOnce);
+    tare(nowTime, gFilt, running, flowStopTimer, time, startOnce, lastPressMs);
 
     if (scale.is_ready()) {
       val = scale.get_value(1);
@@ -522,7 +553,7 @@ float varZeroClamp(float g) {
   return g;
 }
 
-void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce) {
+void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long lastPressMs) {
   static unsigned long lastZero = 0;
   static bool lastState = HIGH;
 
@@ -543,6 +574,7 @@ void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flo
     }
   }
 
+  lastPressMs = nowTime;
   lastState = state;
 }
 
