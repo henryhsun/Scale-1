@@ -66,18 +66,18 @@ const float shotFlow = 25;
 const float pourFlow = 50;
 
 // auto-sleep when no button is pressed for time
-const unsigned long sleepMs = 10UL * 1000UL;  // 10 minutes; 10min*60s/min*1000ms/s
+const unsigned long sleepMs = 10UL * 60 UL * 1000UL;  // 10 minutes; 10min*60s/min*1000ms/s
 static unsigned long lastPressMs = 0;
 
 const float beepGrams = 200;
 
 // function prototypes
-void beep(int);                                                                                                                                         // buzzer beep
-float quantize(float g);                                                                                                                                // quantize values to nearest 0.1 g
-float hysteresis(float read_g);                                                                                                                         // restrict screen updates if change is too small
-float varZeroClamp(float g);                                                                                                                            // clamp values close to 0
+void beep(int);                                                                                                                                                       // buzzer beep
+float quantize(float g);                                                                                                                                              // quantize values to nearest 0.1 g
+float hysteresis(float read_g);                                                                                                                                       // restrict screen updates if change is too small
+float varZeroClamp(float g);                                                                                                                                          // clamp values close to 0
 void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long &lastPressMs, bool &beeped);  // tare scale
-void hx711PowerDown();                                                                                                                                  // power down to save battery
+void hx711PowerDown();                                                                                                                                                // power down to save battery
 void hx711PowerUp();
 void convertTime(unsigned long time);  // timer display for minutes, seconds
 float computeFlowrate(float gFilt, float &prevGFlow, unsigned long nowTime);
