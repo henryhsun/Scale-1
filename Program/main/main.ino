@@ -66,16 +66,18 @@ const float shotFlow = 25;
 const float pourFlow = 50;
 
 // auto-sleep when no button is pressed for time
-const unsigned long sleepMs = 10UL * 60UL * 1000UL;  // 10 minutes; 10min*60s/min*1000ms/s
+const unsigned long sleepMs = 10UL * 1000UL;  // 10 minutes; 10min*60s/min*1000ms/s
 static unsigned long lastPressMs = 0;
 
+const float beepGrams = 200;
+
 // function prototypes
-void beep(int);                                                                                                                                        // buzzer beep
-float quantize(float g);                                                                                                                               // quantize values to nearest 0.1 g
-float hysteresis(float read_g);                                                                                                                        // restrict screen updates if change is too small
-float varZeroClamp(float g);                                                                                                                           // clamp values close to 0
-void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long lastPressMs);  // tare scale
-void hx711PowerDown();                                                                                                                                 // power down to save battery
+void beep(int);                                                                                                                                         // buzzer beep
+float quantize(float g);                                                                                                                                // quantize values to nearest 0.1 g
+float hysteresis(float read_g);                                                                                                                         // restrict screen updates if change is too small
+float varZeroClamp(float g);                                                                                                                            // clamp values close to 0
+void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long &lastPressMs, bool &beeped);  // tare scale
+void hx711PowerDown();                                                                                                                                  // power down to save battery
 void hx711PowerUp();
 void convertTime(unsigned long time);  // timer display for minutes, seconds
 float computeFlowrate(float gFilt, float &prevGFlow, unsigned long nowTime);
@@ -193,6 +195,9 @@ void loop() {
 
   static Mode prevMode = MODE_COUNT;
 
+  // beep on weight
+  static bool beeped = false;
+
   Serial.println(refresh);  // debugging
 
   // sleep logic
@@ -210,6 +215,7 @@ void loop() {
     }
 
     if (zeroPressed || modePressed) {
+      lastPressMs = nowTime;
       mode = MODE_POUR;
       display.ssd1306_command(SSD1306_DISPLAYON);
       beep(60);
@@ -306,6 +312,7 @@ void loop() {
     flowStopTimer = 0;
 
     lastPressMs = nowTime;
+    beeped = false;
 
     prevMode = mode;
   }
@@ -318,7 +325,7 @@ void loop() {
     display.clearDisplay();
 
     // millis based zero function
-    tare(nowTime, gFilt, running, flowStopTimer, time, startOnce, lastPressMs);
+    tare(nowTime, gFilt, running, flowStopTimer, time, startOnce, lastPressMs, beeped);
 
     if (scale.is_ready()) {
       val = scale.get_value(1);
@@ -358,7 +365,7 @@ void loop() {
     // fsm non-blocking mode switching
     switch (mode) {
       case MODE_POUR:
-        updatePour(gFilt, running, nowTime, time, startOnce);
+        updatePour(gFilt, running, nowTime, time, startOnce, beeped);
         convertTime(time, minutes, seconds, milliseconds);
         drawPour(gFilt, minutes, seconds, milliseconds);
         drawFlowBar(flowrateFilt, pourFlow);
@@ -385,7 +392,7 @@ void loop() {
 }
 
 // -------------- FSM mode functions ------------------
-void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce) {
+void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, bool &startOnce, bool &beeped) {
   if (running == false && startOnce == true && gFilt > timerStartG) {
     running = true;
     tStart = nowTime;
@@ -394,6 +401,11 @@ void updatePour(float gFilt, bool &running, unsigned long nowTime, float &time, 
 
   if (running == true) {
     time = nowTime - tStart;
+  }
+
+  if (beeped == false && gFilt >= beepGrams) {
+    beep(150);
+    beeped = true;
   }
 }
 
@@ -568,7 +580,7 @@ float varZeroClamp(float g) {
   return g;
 }
 
-void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long lastPressMs) {
+void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flowStopTimer, float &time, bool &startOnce, unsigned long &lastPressMs, bool &beeped) {
   static unsigned long lastZero = 0;
   static bool lastState = HIGH;
 
@@ -585,11 +597,11 @@ void tare(unsigned long nowTime, float &gFilt, bool &running, unsigned long &flo
       time = 0;
       flowStopTimer = 0;
       startOnce = true;
+      lastPressMs = nowTime;
+      beeped = false;
       beep(100);
     }
   }
-
-  lastPressMs = nowTime;
   lastState = state;
 }
 
