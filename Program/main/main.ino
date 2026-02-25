@@ -20,8 +20,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // HX711 config
 // DAT/DOUT is output from HX711 to ESP32, CLK/SCK is clock from ESP32 to HX711
-constexpr int HX711_DAT = 19;
-constexpr int HX711_CLK = 18;
+constexpr int HX711_DAT = 18;
+constexpr int HX711_CLK = 19;
 
 HX711 scale;
 
@@ -483,6 +483,8 @@ void drawPour(float gFilt, int minutes, int seconds, int milliseconds) {
   display.print("m");
   display.setCursor(41, 57);
   display.print("s");
+
+  Serial.println(gFilt);
 }
 
 void drawShot(float gFilt, int minutes, int seconds, int milliseconds) {
@@ -513,6 +515,7 @@ void drawShot(float gFilt, int minutes, int seconds, int milliseconds) {
   display.print("m");
   display.setCursor(41, 57);
   display.print("s");
+  Serial.println(gFilt);
 }
 
 void drawKitchen(float grams, float gFilt) {
@@ -544,6 +547,7 @@ void drawKitchen(float grams, float gFilt) {
   display.print("lbs");
   display.setCursor(65, 57);
   display.print("oz");
+  Serial.println(gFilt);
 }
 
 
