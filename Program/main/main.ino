@@ -198,10 +198,7 @@ void loop() {
   // beep on weight
   static bool beeped = false;
 
-  Serial.println(refresh);  // debugging
-
   // sleep logic
-
   if (mode == MODE_SLEEP) {
     if (!sleepArm) {
       if (!zeroPressed && !modePressed) {
