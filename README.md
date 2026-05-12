@@ -1,7 +1,9 @@
 # Scale (1)
 ESP32 Precison Coffee Scale with multiple modes per brew method
+
 _MVP in progress_
 <img width="530" height="412" alt="image" src="https://github.com/user-attachments/assets/16ce0a50-dac3-405e-a452-da37c61ed756" />
+
 • Designed and built an ESP32-based precision scale using load cells and HX711 ADC, achieving 0.1 g
 resolution with timer and flow-rate calculation modes
 • Implemented adaptive filtering and finite-state-machine logic for stable real-time weight measurements, auto-timed
